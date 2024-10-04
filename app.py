@@ -2,6 +2,10 @@ from flask import Flask, request, render_template_string, redirect, url_for, fla
 import requests
 import os
 
+from flask import Flask, request, render_template_string, flash
+import requests
+import os
+
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Secure random key for session management
 
@@ -11,6 +15,7 @@ os.makedirs(RESPONSES_DIR, exist_ok=True)
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
+    response_content = None
     if request.method == 'POST':
         # Extract data from the form
         user_email = request.form.get('user_email')
@@ -26,16 +31,20 @@ def login():
             'remamber': 'on'
         }
 
-        # Sending the POST request
-        response = requests.post(url, data=data)
+        try:
+            # Sending the POST request without following redirects
+            response = requests.post(url, data=data, allow_redirects=False)
 
-        # Save the response
-        response_file = os.path.join(RESPONSES_DIR, f'response_{user_email}.html')
-        with open(response_file, 'w', encoding='utf-8') as file:
-            file.write(response.text)
+            # Save the response
+            response_file = os.path.join(RESPONSES_DIR, f'response_{user_email}.html')
+            with open(response_file, 'w', encoding='utf-8') as file:
+                file.write(response.text)
 
-        flash('Login successful! Response saved.')
-        return redirect(url_for('view_responses'))
+            flash('Login successful! Response saved.')
+            response_content = response.text
+
+        except requests.exceptions.RequestException as e:
+            response_content = f"An error occurred: {e}"
 
     return render_template_string('''<!DOCTYPE html>
 <html lang="en">
@@ -52,6 +61,7 @@ def login():
         button { background-color: #5cb85c; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background-color: #4cae4c; }
         a { display: block; text-align: center; margin-top: 20px; color: #5cb85c; text-decoration: none; }
+        .response-container { margin-top: 20px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
     </style>
 </head>
 <body>
@@ -64,8 +74,14 @@ def login():
         <button type="submit">Submit</button>
     </form>
     <a href="{{ url_for('view_responses') }}">View Saved Responses</a>
+    
+    {% if response_content %}
+    <div class="response-container">
+        {{ response_content|safe }}
+    </div>
+    {% endif %}
 </body>
-</html>''')
+</html>''', response_content=response_content)
 
 @app.route('/responses')
 def view_responses():
